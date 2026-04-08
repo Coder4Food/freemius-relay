@@ -1,39 +1,23 @@
 require('dotenv').config();
 
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const STORE_PATH = path.join(__dirname, 'data', 'licenses.json');
+const DATABASE_URL = process.env.DATABASE_URL || '';
 
 app.use(express.json({ limit: '1mb' }));
 
-function ensureStore() {
-  const dataDir = path.join(__dirname, 'data');
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-
-  if (!fs.existsSync(STORE_PATH)) {
-    fs.writeFileSync(
-      STORE_PATH,
-      JSON.stringify({ licenses: [] }, null, 2),
-      'utf8'
-    );
-  }
-}
-
-function loadStore() {
-  ensureStore();
-  const raw = fs.readFileSync(STORE_PATH, 'utf8');
-  return JSON.parse(raw);
-}
-
-function saveStore(store) {
-  fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), 'utf8');
-}
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: DATABASE_URL
+    ? {
+        require: true,
+        rejectUnauthorized: false,
+      }
+    : false,
+});
 
 function normalizeEmail(email) {
   return String(email || '')
@@ -41,15 +25,42 @@ function normalizeEmail(email) {
     .toLowerCase();
 }
 
-app.get('/health', function (req, res) {
-  res.json({
-    ok: true,
-    service: 'freemius-relay',
-    time_utc: new Date().toISOString(),
-  });
+async function initDb() {
+  if (!DATABASE_URL) {
+    throw new Error('DATABASE_URL is not set.');
+  }
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS licenses (
+      email TEXT PRIMARY KEY,
+      license_key TEXT NOT NULL DEFAULT '',
+      received_utc TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      raw_payload JSONB
+    )
+  `);
+}
+
+app.get('/health', async function (req, res) {
+  try {
+    const db = await pool.query('SELECT NOW() AS now_utc');
+    res.json({
+      ok: true,
+      service: 'freemius-relay',
+      time_utc: new Date().toISOString(),
+      db_ok: true,
+      db_time_utc: db.rows[0].now_utc,
+    });
+  } catch (err) {
+    console.error('[HEALTH-ERR]', err);
+    res.status(500).json({
+      ok: false,
+      service: 'freemius-relay',
+      error: 'db_unavailable',
+    });
+  }
 });
 
-app.post('/webhook/freemius', function (req, res) {
+app.post('/webhook/freemius', async function (req, res) {
   try {
     const body = req.body || {};
 
@@ -62,38 +73,35 @@ app.post('/webhook/freemius', function (req, res) {
 
     const licenseKey = body.license_key || body.licenseKey || body.key || '';
 
-    const payloadToStore = {
-      received_utc: new Date().toISOString(),
-      email: email,
-      license_key: licenseKey,
-      body: body,
-    };
-
-    const store = loadStore();
-
-    if (email) {
-      const idx = store.licenses.findIndex(function (x) {
-        return normalizeEmail(x.email) === email;
+    if (!email) {
+      return res.status(400).json({
+        ok: false,
+        error: 'email_not_found_in_payload',
       });
-
-      if (idx >= 0) {
-        store.licenses[idx] = payloadToStore;
-      } else {
-        store.licenses.push(payloadToStore);
-      }
-
-      saveStore(store);
     }
 
+    await pool.query(
+      `
+      INSERT INTO licenses (email, license_key, received_utc, raw_payload)
+      VALUES ($1, $2, NOW(), $3::jsonb)
+      ON CONFLICT (email)
+      DO UPDATE SET
+        license_key = EXCLUDED.license_key,
+        received_utc = NOW(),
+        raw_payload = EXCLUDED.raw_payload
+      `,
+      [email, licenseKey, JSON.stringify(body)]
+    );
+
     console.log(
-      '[WEBHOOK] received email=%s hasKey=%s',
-      email || '(none)',
+      '[WEBHOOK] stored email=%s hasKey=%s',
+      email,
       licenseKey ? 'yes' : 'no'
     );
 
     res.json({
       ok: true,
-      stored: email ? true : false,
+      stored: true,
     });
   } catch (err) {
     console.error('[WEBHOOK-ERR]', err);
@@ -104,7 +112,7 @@ app.post('/webhook/freemius', function (req, res) {
   }
 });
 
-app.get('/api/license/latest', function (req, res) {
+app.get('/api/license/latest', async function (req, res) {
   try {
     const email = normalizeEmail(req.query.email);
 
@@ -115,23 +123,29 @@ app.get('/api/license/latest', function (req, res) {
       });
     }
 
-    const store = loadStore();
-    const item = store.licenses.find(function (x) {
-      return normalizeEmail(x.email) === email;
-    });
+    const result = await pool.query(
+      `
+      SELECT email, license_key, received_utc
+      FROM licenses
+      WHERE email = $1
+      `,
+      [email]
+    );
 
-    if (!item) {
+    if (result.rows.length === 0) {
       return res.status(404).json({
         ok: false,
         error: 'not_found',
       });
     }
 
+    const row = result.rows[0];
+
     res.json({
       ok: true,
-      email: item.email,
-      license_key: item.license_key || '',
-      received_utc: item.received_utc,
+      email: row.email,
+      license_key: row.license_key || '',
+      received_utc: row.received_utc,
     });
   } catch (err) {
     console.error('[API-ERR]', err);
@@ -142,7 +156,16 @@ app.get('/api/license/latest', function (req, res) {
   }
 });
 
-app.listen(PORT, function () {
-  ensureStore();
-  console.log('[START] freemius-relay listening on port %s', PORT);
-});
+async function start() {
+  try {
+    await initDb();
+    app.listen(PORT, function () {
+      console.log('[START] freemius-relay listening on port %s', PORT);
+    });
+  } catch (err) {
+    console.error('[START-ERR]', err);
+    process.exit(1);
+  }
+}
+
+start();
