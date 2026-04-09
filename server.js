@@ -52,10 +52,13 @@ app.get('/health', async (req, res) => {
       db_time_utc: db.rows[0].now_utc,
     });
   } catch (err) {
+    console.error('[HEALTH-ERR]', err);
+
     res.status(500).json({
       ok: false,
       service: 'freemius-relay',
       error: 'db_unavailable',
+      detail: err.message,
     });
   }
 });
