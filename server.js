@@ -40,22 +40,22 @@ async function initDb() {
   `);
 }
 
-app.get('/health', async function (req, res) {
+app.get('/health', async (req, res) => {
   try {
-    const db = await pool.query('SELECT NOW() AS now_utc');
+    const result = await pool.query('SELECT NOW()');
+
     res.json({
       ok: true,
       service: 'freemius-relay',
       time_utc: new Date().toISOString(),
       db_ok: true,
-      db_time_utc: db.rows[0].now_utc,
+      db_time_utc: result.rows[0].now
     });
   } catch (err) {
-    console.error('[HEALTH-ERR]', err);
     res.status(500).json({
       ok: false,
-      service: 'freemius-relay',
-      error: 'db_unavailable',
+      db_ok: false,
+      error: err.message
     });
   }
 });
