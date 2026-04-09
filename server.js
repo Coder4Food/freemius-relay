@@ -39,8 +39,7 @@ async function initDb() {
     )
   `);
 }
-
-app.get('/health', async (req, res) => {
+app.get('/health', async function (req, res) {
   try {
     const result = await pool.query('SELECT NOW()');
 
@@ -49,7 +48,7 @@ app.get('/health', async (req, res) => {
       service: 'freemius-relay',
       time_utc: new Date().toISOString(),
       db_ok: true,
-      db_time_utc: db.rows[0].now_utc,
+      db_time_utc: result.rows[0].now,
     });
   } catch (err) {
     console.error('[HEALTH-ERR]', err);
