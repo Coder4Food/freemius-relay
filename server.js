@@ -49,13 +49,13 @@ app.get('/health', async (req, res) => {
       service: 'freemius-relay',
       time_utc: new Date().toISOString(),
       db_ok: true,
-      db_time_utc: result.rows[0].now
+      db_time_utc: db.rows[0].now_utc,
     });
   } catch (err) {
     res.status(500).json({
       ok: false,
-      db_ok: false,
-      error: err.message
+      service: 'freemius-relay',
+      error: 'db_unavailable',
     });
   }
 });
