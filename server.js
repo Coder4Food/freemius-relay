@@ -145,9 +145,19 @@ app.post('/webhook/freemius', async function (req, res) {
       normalizeEmail(body.user_email) ||
       normalizeEmail(body.customer_email) ||
       normalizeEmail(body.customer && body.customer.email) ||
-      normalizeEmail(body.user && body.user.email);
+      normalizeEmail(body.user && body.user.email) ||
+      normalizeEmail(
+        body.objects && body.objects.user && body.objects.user.email
+      );
 
-    const licenseKey = body.license_key || body.licenseKey || body.key || '';
+    const licenseKey =
+      body.license_key ||
+      body.licenseKey ||
+      body.key ||
+      (body.objects &&
+        body.objects.license &&
+        body.objects.license.secret_key) ||
+      '';
 
     log(
       '[WEBHOOK] parsed email=%s hasKey=%s',
