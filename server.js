@@ -138,6 +138,17 @@ app.post('/webhook/freemius', async function (req, res) {
   try {
     const body = req.body || {};
 
+    const eventType = body.type || '';
+
+    if (
+      !eventType.startsWith('license') &&
+      !eventType.startsWith('payment') &&
+      !eventType.startsWith('subscription')
+    ) {
+      console.log('[WEBHOOK] Ignoring event type:', eventType);
+      return res.json({ ok: true, ignored: true });
+    }
+
     log('[WEBHOOK] /webhook/freemius entered.');
 
     const email =
