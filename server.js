@@ -61,7 +61,7 @@ app.use(function (req, res, next) {
     log('[REQ] %s %s %s', nowUtc(), req.method, req.originalUrl || req.url);
     log(
       '[REQ] ip=%s',
-      req.ip || (req.connection && req.connection.remoteAddress) || ''
+      req.ip || (req.connection && req.connection.remoteAddress) || '',
     );
     log('[REQ] headers=%s', safeJson(req.headers));
 
@@ -79,7 +79,7 @@ app.use(function (req, res, next) {
       req.method,
       req.originalUrl || req.url,
       res.statusCode,
-      elapsedMs
+      elapsedMs,
     );
   });
 
@@ -147,7 +147,7 @@ app.post('/webhook/freemius', async function (req, res) {
       normalizeEmail(body.customer && body.customer.email) ||
       normalizeEmail(body.user && body.user.email) ||
       normalizeEmail(
-        body.objects && body.objects.user && body.objects.user.email
+        body.objects && body.objects.user && body.objects.user.email,
       );
 
     const licenseKey =
@@ -162,7 +162,7 @@ app.post('/webhook/freemius', async function (req, res) {
     log(
       '[WEBHOOK] parsed email=%s hasKey=%s',
       email,
-      licenseKey ? 'yes' : 'no'
+      licenseKey ? 'yes' : 'no',
     );
 
     if (!email) {
@@ -184,13 +184,13 @@ app.post('/webhook/freemius', async function (req, res) {
         received_utc = NOW(),
         raw_payload = EXCLUDED.raw_payload
       `,
-      [email, licenseKey, JSON.stringify(body)]
+      [email, licenseKey, JSON.stringify(body)],
     );
 
     log(
       '[WEBHOOK] stored email=%s hasKey=%s',
       email,
-      licenseKey ? 'yes' : 'no'
+      licenseKey ? 'yes' : 'no',
     );
 
     res.json({
@@ -214,7 +214,7 @@ app.get('/api/license/latest', async function (req, res) {
     log(
       '[API] /api/license/latest entered. rawEmail=%s normalizedEmail=%s',
       req.query.email || '',
-      email
+      email,
     );
 
     if (!email) {
@@ -232,7 +232,7 @@ app.get('/api/license/latest', async function (req, res) {
       FROM licenses
       WHERE email = $1
       `,
-      [email]
+      [email],
     );
 
     log('[API] query complete rowCount=%s', result.rows.length);
@@ -252,7 +252,7 @@ app.get('/api/license/latest', async function (req, res) {
       '[API] returning email=%s hasKey=%s received_utc=%s',
       row.email,
       row.license_key ? 'yes' : 'no',
-      row.received_utc
+      row.received_utc,
     );
 
     res.json({
