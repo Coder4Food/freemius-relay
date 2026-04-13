@@ -228,6 +228,8 @@ app.post('/webhook/freemius', async function (req, res) {
 });
 
 app.get('/api/license/latest', async function (req, res) {
+
+app.get('/api/license/latest', async function (req, res) {
   try {
     const email = normalizeEmail(req.query.email);
 
