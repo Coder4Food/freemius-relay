@@ -227,72 +227,37 @@ app.post('/webhook/freemius', async function (req, res) {
   }
 });
 
-app.get('/api/license/latest', async function (req, res) {
-
-app.get('/api/license/latest', async function (req, res) {
+app.get('/api/license/diagnostics', async function (req, res) {
   try {
-    const email = normalizeEmail(req.query.email);
+    log('[DIAG] /api/license/diagnostics entered.');
 
-    log(
-      '[API] /api/license/latest entered. rawEmail=%s normalizedEmail=%s',
-      req.query.email || '',
-      email,
-    );
+    let bDbOk = false;
 
-    if (!email) {
-      log('[API] email_required.');
-
-      return res.status(400).json({
-        ok: false,
-        error: 'email_required',
-      });
+    try {
+      const result = await pool.query('SELECT 1');
+      bDbOk = result && result.rows && result.rows.length > 0;
+      log('[DIAG] db check ok.');
+    } catch (dbErr) {
+      logError('[DIAG-DB-ERR]', dbErr);
+      bDbOk = false;
     }
 
-    const result = await pool.query(
-      `
-      SELECT email, license_key, received_utc
-      FROM licenses
-      WHERE email = $1
-      `,
-      [email],
-    );
-
-    log('[API] query complete rowCount=%s', result.rows.length);
-
-    if (result.rows.length === 0) {
-      log('[API] not_found for email=%s', email);
-
-      return res.status(404).json({
-        ok: false,
-        error: 'not_found',
-      });
-    }
-
-    const row = result.rows[0];
-
-    log(
-      '[API] returning email=%s hasKey=%s received_utc=%s',
-      row.email,
-      row.license_key ? 'yes' : 'no',
-      row.received_utc,
-    );
-
-    res.json({
-      ok: true,
-      email: row.email,
-      license_key: row.license_key || '',
-      received_utc: row.received_utc,
+    return res.status(200).json({
+      status: 'ok',
+      message: 'relay alive',
+      db_ok: bDbOk,
+      time_utc: nowUtc(),
     });
   } catch (err) {
-    logError('[API-ERR]', err);
-    res.status(500).json({
-      ok: false,
-      error: 'internal_error',
+    logError('[DIAG-ERR]', err);
+
+    return res.status(500).json({
+      status: 'error',
+      message: 'diagnostics failed',
       detail: err.message,
     });
   }
 });
-
 async function start() {
   try {
     log('[START] DEBUG_LOG=%s', DEBUG_LOG ? '1' : '0');
