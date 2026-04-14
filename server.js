@@ -258,6 +258,82 @@ app.get('/api/license/diagnostics', async function (req, res) {
     });
   }
 });
+
+app.get('/api/license/latest', async function (req, res) {
+  try {
+    const email = normalizeEmail(req.query.email);
+
+    log(
+      '[API] /api/license/latest entered. rawEmail=%s normalizedEmail=%s',
+      req.query.email || '',
+      email,
+    );
+
+    if (!email) {
+      log('[API] email_required.');
+
+      return res.status(400).json({
+        status: 'bad_request',
+        message: 'email is required',
+      });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT email, license_key, received_utc
+      FROM licenses
+      WHERE email = $1
+      `,
+      [email],
+    );
+
+    log('[API] query complete rowCount=%s', result.rows.length);
+
+    if (result.rows.length === 0) {
+      log('[API] not_found for email=%s', email);
+
+      return res.status(404).json({
+        status: 'not_found',
+        message: 'No license found for email',
+      });
+    }
+
+    const row = result.rows[0];
+
+    if (!row || !row.license_key || !String(row.license_key).trim()) {
+      log('[API] malformed/empty result for email=%s', email);
+
+      return res.status(500).json({
+        status: 'error',
+        message: 'License record is malformed or empty',
+      });
+    }
+
+    log(
+      '[API] returning email=%s hasKey=%s received_utc=%s',
+      row.email,
+      row.license_key ? 'yes' : 'no',
+      row.received_utc,
+    );
+
+    return res.status(200).json({
+      status: 'ok',
+      message: 'License found',
+      email: row.email,
+      license_key: row.license_key || '',
+      received_utc: row.received_utc,
+    });
+  } catch (err) {
+    logError('[API-ERR]', err);
+
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error',
+      detail: err.message,
+    });
+  }
+});
+
 async function start() {
   try {
     log('[START] DEBUG_LOG=%s', DEBUG_LOG ? '1' : '0');
