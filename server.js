@@ -223,7 +223,10 @@ app.post('/webhook/freemius', async function (req, res) {
 
     return res.json({
       ok: true,
-      stored: true,require('dotenv').config();
+      stored: true,
+      event_type: eventType,
+      environment: environment,
+    });
 
 const express = require('express');
 const { Pool } = require('pg');
