@@ -332,7 +332,7 @@ app.get('/api/license/latest', async function (req, res) {
 
     const result = await pool.query(
       `
-      SELECT email, license_key, received_utc
+      SELECT email, license_key, received_utc, event_type, environment
       FROM licenses
       WHERE email = $1
       `,
@@ -362,9 +362,12 @@ app.get('/api/license/latest', async function (req, res) {
     }
 
     log(
-      '[API] returning email=%s hasKey=%s received_utc=%s',
+      '[API] returning email=%s hasKey=%s keyLen=%s event_type=%s environment=%s received_utc=%s',
       row.email,
       row.license_key ? 'yes' : 'no',
+      row.license_key ? String(row.license_key).length : 0,
+      row.event_type || '',
+      row.environment || '',
       row.received_utc,
     );
 
@@ -373,6 +376,9 @@ app.get('/api/license/latest', async function (req, res) {
       message: 'License found',
       email: row.email,
       license_key: row.license_key || '',
+      key_length: row.license_key ? String(row.license_key).length : 0,
+      event_type: row.event_type || '',
+      environment: row.environment || '',
       received_utc: row.received_utc,
     });
   } catch (err) {
