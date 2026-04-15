@@ -137,27 +137,21 @@ app.get('/health', async function (req, res) {
 app.post('/webhook/freemius', async function (req, res) {
   try {
     const body = req.body || {};
-
     const eventType = body.type || '';
 
-    if (
-      eventType !== 'subscription.created' &&
-      !eventType.startsWith('license')
-    ) {
-      console.log('[WEBHOOK] Ignoring event type:', eventType);
-      return res.json({ ok: true, ignored: true });
-    }
+    log('[WEBHOOK] /webhook/freemius entered. type=%s', eventType);
 
+    //
+    // Ignore unrelated but valid event families with HTTP 200.
+    //
     if (
       !eventType.startsWith('license') &&
       !eventType.startsWith('payment') &&
       !eventType.startsWith('subscription')
     ) {
-      console.log('[WEBHOOK] Ignoring event type:', eventType);
+      log('[WEBHOOK] Ignoring unrelated event type=%s', eventType);
       return res.json({ ok: true, ignored: true });
     }
-
-    log('[WEBHOOK] /webhook/freemius entered.');
 
     const email =
       normalizeEmail(body.email) ||
@@ -167,6 +161,9 @@ app.post('/webhook/freemius', async function (req, res) {
       normalizeEmail(body.user && body.user.email) ||
       normalizeEmail(
         body.objects && body.objects.user && body.objects.user.email,
+      ) ||
+      normalizeEmail(
+        body.objects && body.objects.customer && body.objects.customer.email,
       );
 
     const licenseKey =
@@ -179,17 +176,27 @@ app.post('/webhook/freemius', async function (req, res) {
       '';
 
     log(
-      '[WEBHOOK] parsed email=%s hasKey=%s',
+      '[WEBHOOK] parsed type=%s email=%s hasKey=%s',
+      eventType,
       email,
       licenseKey ? 'yes' : 'no',
     );
 
+    //
+    // For license-related events, accept even if no email is present.
+    // Store only when we have enough identity data.
+    //
     if (!email) {
-      log('[WEBHOOK] email not found in payload.');
+      log(
+        '[WEBHOOK] No email found for type=%s. Accepting webhook without storage.',
+        eventType,
+      );
 
-      return res.status(400).json({
-        ok: false,
-        error: 'email_not_found_in_payload',
+      return res.json({
+        ok: true,
+        ignored: true,
+        reason: 'email_not_found_in_payload',
+        event_type: eventType,
       });
     }
 
@@ -206,20 +213,22 @@ app.post('/webhook/freemius', async function (req, res) {
       [email, licenseKey, JSON.stringify(body)],
     );
 
-    console.log(
-      '[WEBHOOK] stored email=%s hasKey=%s keyLen=%s',
+    log(
+      '[WEBHOOK] stored type=%s email=%s hasKey=%s keyLen=%s',
+      eventType,
       email,
       licenseKey ? 'yes' : 'no',
       licenseKey ? licenseKey.length : 0,
     );
 
-    res.json({
+    return res.json({
       ok: true,
       stored: true,
+      event_type: eventType,
     });
   } catch (err) {
     logError('[WEBHOOK-ERR]', err);
-    res.status(500).json({
+    return res.status(500).json({
       ok: false,
       error: 'internal_error',
       detail: err.message,
