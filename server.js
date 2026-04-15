@@ -139,11 +139,17 @@ app.post('/webhook/freemius', async function (req, res) {
     const body = req.body || {};
     const eventType = body.type || '';
 
+    const licenseEnvironment =
+      body.objects && body.objects.license && body.objects.license.environment;
+
     const isSandbox =
       body.is_sandbox === true ||
       body.sandbox === true ||
       body.mode === 'sandbox' ||
       body.environment === 'sandbox' ||
+      body.is_live === false ||
+      licenseEnvironment === 2 ||
+      String(licenseEnvironment) === '2' ||
       (body.objects &&
         body.objects.install &&
         body.objects.install.is_sandbox === true);
@@ -151,9 +157,13 @@ app.post('/webhook/freemius', async function (req, res) {
     const environment = isSandbox ? 'sandbox' : 'live';
 
     log(
-      '[WEBHOOK] /webhook/freemius entered. type=%s env=%s',
-      eventType,
-      environment,
+      '[WEBHOOK] env-check is_live=%s is_sandbox=%s sandbox=%s mode=%s environment=%s license.environment=%s',
+      String(body.is_live),
+      String(body.is_sandbox),
+      String(body.sandbox),
+      String(body.mode),
+      String(body.environment),
+      String(licenseEnvironment),
     );
 
     //
