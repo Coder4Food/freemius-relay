@@ -1,0 +1,15 @@
+{
+  "name": "freemius-relay",
+  "version": "1.0.0",
+  "description": "Freemius webhook relay for MVSW",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "hash-admin-password": "node scripts/generate-admin-password-hash.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "pg": "^8.20.0"
+  }
+}
