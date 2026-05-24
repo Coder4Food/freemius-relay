@@ -184,5 +184,110 @@ module.exports = function createAdminRouter(deps) {
     },
   );
 
+
+  router.get(
+    '/api/admin/customers',
+    requireAdmin,
+    async function (req, res) {
+      try {
+        const result = await pool.query(
+          `
+        SELECT id, email, customer_name, first_seen_utc, last_seen_utc, last_public_ip
+        FROM customers
+        ORDER BY last_seen_utc DESC, email ASC
+        LIMIT 500
+        `,
+        );
+
+        logger.log('[ADMIN-CUSTOMERS] count=%s', result.rows.length);
+
+        return res.status(200).json({
+          status: 'ok',
+          count: result.rows.length,
+          customers: result.rows,
+        });
+      } catch (err) {
+        logger.logError('[ADMIN-CUSTOMERS-ERR]', err);
+        return res.status(500).json({
+          status: 'error',
+          message: 'Internal server error',
+          detail: err.message,
+        });
+      }
+    },
+  );
+
+  router.get(
+    '/api/admin/devices',
+    requireAdmin,
+    async function (req, res) {
+      try {
+        const result = await pool.query(
+          `
+        SELECT d.id, d.customer_id, c.email, c.customer_name,
+               d.machine_guid, d.device_serials_csv,
+               d.first_seen_utc, d.last_seen_utc, d.last_public_ip
+        FROM devices d
+        INNER JOIN customers c ON c.id = d.customer_id
+        ORDER BY d.last_seen_utc DESC, c.email ASC
+        LIMIT 500
+        `,
+        );
+
+        logger.log('[ADMIN-DEVICES] count=%s', result.rows.length);
+
+        return res.status(200).json({
+          status: 'ok',
+          count: result.rows.length,
+          devices: result.rows,
+        });
+      } catch (err) {
+        logger.logError('[ADMIN-DEVICES-ERR]', err);
+        return res.status(500).json({
+          status: 'error',
+          message: 'Internal server error',
+          detail: err.message,
+        });
+      }
+    },
+  );
+
+  router.get(
+    '/api/admin/purchase-activate-requests',
+    requireAdmin,
+    async function (req, res) {
+      try {
+        const result = await pool.query(
+          `
+        SELECT id, customer_id, device_id, email, customer_name,
+               device_serials_csv, machine_guid, public_ip,
+               status, message,
+               CASE WHEN COALESCE(license_key, '') <> '' THEN LENGTH(license_key) ELSE 0 END AS license_key_length,
+               quota_used, quota_limit, event_type, environment,
+               created_utc, updated_utc
+        FROM purchase_activate_requests
+        ORDER BY created_utc DESC
+        LIMIT 500
+        `,
+        );
+
+        logger.log('[ADMIN-PAS-LIST] count=%s', result.rows.length);
+
+        return res.status(200).json({
+          status: 'ok',
+          count: result.rows.length,
+          requests: result.rows,
+        });
+      } catch (err) {
+        logger.logError('[ADMIN-PAS-LIST-ERR]', err);
+        return res.status(500).json({
+          status: 'error',
+          message: 'Internal server error',
+          detail: err.message,
+        });
+      }
+    },
+  );
+
   return router;
 };
