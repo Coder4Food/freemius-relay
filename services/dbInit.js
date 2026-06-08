@@ -28,9 +28,24 @@ async function initDb(pool, logger) {
       last_machine_guid TEXT NULL,
       notes TEXT NULL,
       created_by TEXT NULL,
-      updated_utc TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      updated_utc TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      cohort_source TEXT NOT NULL DEFAULT 'manual',
+      keap_contact_id TEXT NULL,
+      keap_cohort_field_id TEXT NULL,
+      keap_cohort_field_label TEXT NULL,
+      keap_cohort_field_raw TEXT NULL,
+      keap_synced_utc TIMESTAMPTZ NULL
     )
   `);
+
+  // Existing deployments need ALTER statements because CREATE TABLE IF NOT EXISTS
+  // will not add columns to an already-created table.
+  await pool.query(`ALTER TABLE customer_enrollment ADD COLUMN IF NOT EXISTS cohort_source TEXT NOT NULL DEFAULT 'manual'`);
+  await pool.query(`ALTER TABLE customer_enrollment ADD COLUMN IF NOT EXISTS keap_contact_id TEXT NULL`);
+  await pool.query(`ALTER TABLE customer_enrollment ADD COLUMN IF NOT EXISTS keap_cohort_field_id TEXT NULL`);
+  await pool.query(`ALTER TABLE customer_enrollment ADD COLUMN IF NOT EXISTS keap_cohort_field_label TEXT NULL`);
+  await pool.query(`ALTER TABLE customer_enrollment ADD COLUMN IF NOT EXISTS keap_cohort_field_raw TEXT NULL`);
+  await pool.query(`ALTER TABLE customer_enrollment ADD COLUMN IF NOT EXISTS keap_synced_utc TIMESTAMPTZ NULL`);
 
   // Purchase/Activate support tables are intentionally separate from
   // customer_enrollment so the existing cohort/free-year branch remains isolated.

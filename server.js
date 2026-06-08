@@ -5,6 +5,7 @@ const { createLogger } = require('./services/logger');
 const { initDb } = require('./services/dbInit');
 const { verifyPassword } = require('./services/passwords');
 const { createAdminAuth } = require('./services/adminAuth');
+const { createKeapClient } = require('./services/keap');
 const { createRequestLogger } = require('./middleware/requestLogger');
 const createHealthRouter = require('./routes/health');
 const createLicenseRouter = require('./routes/license');
@@ -21,6 +22,10 @@ const adminAuth = createAdminAuth({
   adminPasswordHash: env.adminPasswordHash,
   tokenTtlMinutes: env.adminTokenTtlMinutes,
 });
+const keap = createKeapClient({
+  env: env,
+  logger: logger,
+});
 
 app.use(express.json({ limit: '1mb' }));
 app.use(createRequestLogger(logger));
@@ -29,6 +34,7 @@ const deps = {
   pool: pool,
   logger: logger,
   adminAuth: adminAuth,
+  keap: keap,
 };
 
 app.use(createHealthRouter(deps));
