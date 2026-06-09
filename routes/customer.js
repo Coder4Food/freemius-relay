@@ -4,6 +4,7 @@ module.exports = function createCustomerRouter(deps) {
   const router = express.Router();
   const pool = deps.pool;
   const logger = deps.logger;
+  const keap = deps.keap;
 
   function buildEnrollmentResponse(row) {
     if (!row) {
@@ -108,6 +109,31 @@ module.exports = function createCustomerRouter(deps) {
       }
 
       row = queryResult.rows[0];
+
+      if (keap && keap.isConfigured && keap.isConfigured()) {
+        try {
+          const keapWrite = await keap.writeRegistrationEmailByEmail(email, email);
+
+          if (keapWrite && keapWrite.ok) {
+            logger.log(
+              '[CUSTOMER-START-KEAP] wrote registration email email=%s contactId=%s fieldId=%s',
+              email,
+              keapWrite.contact_id || '',
+              keapWrite.field_id || '',
+            );
+          } else {
+            logger.log(
+              '[CUSTOMER-START-KEAP] skipped registration email writeback email=%s reason=%s',
+              email,
+              (keapWrite && keapWrite.reason) || 'unknown',
+            );
+          }
+        } catch (keapErr) {
+          // Do not fail software activation just because the CRM write-back failed.
+          logger.logError('[CUSTOMER-START-KEAP-ERR]', keapErr);
+        }
+      }
+
       return res.status(200).json(buildEnrollmentResponse(row));
     } catch (err) {
       logger.logError('[CUSTOMER-START-ERR]', err);

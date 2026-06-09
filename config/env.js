@@ -22,4 +22,10 @@ module.exports = {
     process.env.KEAP_COHORT_FIELD_LABEL || 'Date 1 year Free Software Ends',
   ).trim(),
   keapCohortFieldId: String(process.env.KEAP_COHORT_FIELD_ID || '').trim(),
+
+  // Optional Keap write-back target used when MVSW starts/uses a cohort free-year.
+  keapRegEmailFieldLabel: String(
+    process.env.KEAP_REG_EMAIL_FIELD_LABEL || 'SW Reg Key Email:',
+  ).trim(),
+  keapRegEmailFieldId: String(process.env.KEAP_REG_EMAIL_FIELD_ID || '').trim(),
 };

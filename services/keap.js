@@ -5,6 +5,8 @@ function createKeapClient(options) {
   const accessToken = String(env.keapAccessToken || '').trim();
   const cohortFieldLabel = String(env.keapCohortFieldLabel || '').trim();
   const cohortFieldId = String(env.keapCohortFieldId || '').trim();
+  const regEmailFieldLabel = String(env.keapRegEmailFieldLabel || '').trim();
+  const regEmailFieldId = String(env.keapRegEmailFieldId || '').trim();
 
   function isConfigured() {
     return !!baseUrl && !!accessToken;
@@ -40,6 +42,37 @@ function createKeapClient(options) {
     if (!response.ok) {
       logger.logError('[KEAP-HTTP-ERR] GET %s status=%s body=%s', path, response.status, logger.safeJson(body));
       throw new Error('Keap API request failed: GET ' + path + ' status=' + response.status);
+    }
+
+    return body;
+  }
+
+  async function apiPatch(path, payload) {
+    requireConfigured();
+
+    const url = baseUrl + path;
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer ' + accessToken,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload || {}),
+    });
+
+    const text = await response.text();
+    let body = null;
+
+    try {
+      body = text ? JSON.parse(text) : {};
+    } catch (err) {
+      body = { raw_text: text };
+    }
+
+    if (!response.ok) {
+      logger.logError('[KEAP-HTTP-ERR] PATCH %s status=%s body=%s', path, response.status, logger.safeJson(body));
+      throw new Error('Keap API request failed: PATCH ' + path + ' status=' + response.status);
     }
 
     return body;
@@ -103,6 +136,39 @@ function createKeapClient(options) {
       field: field,
       requested_label: cohortFieldLabel,
       requested_id: cohortFieldId,
+    };
+  }
+
+  async function getFieldDefinitionByIdOrLabel(fieldId, fieldLabel) {
+    const model = await getContactModel();
+    const fields = getFieldListFromModel(model);
+    const wantLabel = normalizeText(fieldLabel);
+    const wantId = normalizeText(fieldId);
+    let i = 0;
+    let field = null;
+
+    for (i = 0; i < fields.length; i += 1) {
+      const f = fields[i] || {};
+      const id = normalizeText(f.id || f.field_id || f.name);
+      const label = normalizeText(f.label || f.field_label || f.field_name || f.name);
+
+      if (wantId && id === wantId) {
+        field = f;
+        break;
+      }
+
+      if (wantLabel && label === wantLabel) {
+        field = f;
+        break;
+      }
+    }
+
+    return {
+      model: model,
+      fields: fields,
+      field: field,
+      requested_label: fieldLabel,
+      requested_id: fieldId,
     };
   }
 
@@ -289,6 +355,59 @@ function createKeapClient(options) {
     };
   }
 
+
+  function extractFieldId(field) {
+    return String((field && (field.id || field.field_id || field.name)) || '').trim();
+  }
+
+  async function writeRegistrationEmailByEmail(email, registrationEmail) {
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const cleanRegistrationEmail = String(registrationEmail || email || '').trim().toLowerCase();
+    const found = await findContactByEmail(cleanEmail);
+    const contactId = extractContactId(found);
+    const fieldInfo = await getFieldDefinitionByIdOrLabel(regEmailFieldId, regEmailFieldLabel);
+    const fieldId = extractFieldId(fieldInfo.field);
+    let updated = null;
+
+    if (!contactId) {
+      return {
+        ok: false,
+        reason: 'contact_not_found',
+        email: cleanEmail,
+      };
+    }
+
+    if (!fieldId) {
+      return {
+        ok: false,
+        reason: 'field_not_found',
+        email: cleanEmail,
+        contact_id: String(contactId || ''),
+        requested_field_id: regEmailFieldId,
+        requested_field_label: regEmailFieldLabel,
+      };
+    }
+
+    updated = await apiPatch('/contacts/' + encodeURIComponent(String(contactId)), {
+      custom_fields: [
+        {
+          id: fieldId,
+          content: cleanRegistrationEmail,
+        },
+      ],
+    });
+
+    return {
+      ok: true,
+      email: cleanEmail,
+      registration_email: cleanRegistrationEmail,
+      contact_id: String(contactId || ''),
+      field_id: fieldId,
+      field_label: String((fieldInfo.field && fieldInfo.field.label) || regEmailFieldLabel || ''),
+      response: updated,
+    };
+  }
+
   return {
     isConfigured: isConfigured,
     getContactModel: getContactModel,
@@ -296,6 +415,7 @@ function createKeapClient(options) {
     findContactByEmail: findContactByEmail,
     retrieveContact: retrieveContact,
     getCohortContactByEmail: getCohortContactByEmail,
+    writeRegistrationEmailByEmail: writeRegistrationEmailByEmail,
   };
 }
 
