@@ -105,157 +105,17 @@ module.exports = function createAdminRouter(deps) {
         const createdBy = String(
           (req.adminSession && req.adminSession.username) || 'keap-sync',
         ).trim();
-        let keapResult = null;
-        let email = '';
-        let isActive = false;
-        let result = null;
-
-        if (!requestedEmail) {
-          return res.status(400).json({
-            status: 'bad_request',
-            message: 'email is required',
-          });
-        }
-
-        if (!keap || !keap.isConfigured()) {
-          return res.status(400).json({
-            status: 'bad_request',
-            message: 'Keap is not configured. Set KEAP_ACCESS_TOKEN first.',
-          });
-        }
-
-        keapResult = await keap.getCohortContactByEmail(requestedEmail);
-
-        if (!keapResult.found) {
-          return res.status(404).json({
-            status: 'not_found',
-            message: 'Keap contact not found for email',
-            email: requestedEmail,
-          });
-        }
-
-        email = logger.normalizeEmail(keapResult.email || requestedEmail);
-
-        if (!keapResult.raw_value || !keapResult.expire_utc) {
-          if (!deactivateIfBlank) {
-            return res.status(200).json({
-              status: 'ok',
-              synced: false,
-              email: email,
-              is_cohort: false,
-              message: 'Keap cohort date field is blank or invalid. Database was not changed.',
-              keap_contact_id: String(keapResult.contact_id || ''),
-              keap_raw_value: String(keapResult.raw_value || ''),
-            });
-          }
-
-          result = await pool.query(
-            `
-            UPDATE customer_enrollment
-            SET
-              is_active = FALSE,
-              cohort_source = 'keap',
-              keap_contact_id = $2,
-              keap_cohort_field_id = $3,
-              keap_cohort_field_label = $4,
-              keap_cohort_field_raw = $5,
-              keap_synced_utc = NOW(),
-              notes = 'Keap cohort date field blank or invalid',
-              updated_utc = NOW()
-            WHERE email = $1
-            RETURNING email, cohort, is_active, enrolled_utc, free_year_start_utc, free_year_expire_utc,
-                      first_machine_guid, last_machine_guid, notes, created_by, updated_utc,
-                      cohort_source, keap_contact_id, keap_cohort_field_id,
-                      keap_cohort_field_label, keap_cohort_field_raw, keap_synced_utc
-            `,
-            [
-              email,
-              String(keapResult.contact_id || ''),
-              extractKeapFieldId(keapResult.field),
-              extractKeapFieldLabel(keapResult.field),
-              String(keapResult.raw_value || ''),
-            ],
-          );
-
-          return res.status(200).json({
-            status: 'ok',
-            synced: true,
-            email: email,
-            is_cohort: false,
-            message: 'Keap cohort date field is blank or invalid. Existing enrollment was deactivated if present.',
-            customer: result.rows[0] || null,
-          });
-        }
-
-        isActive = isFutureOrToday(keapResult.expire_utc);
-
-        result = await pool.query(
-          `
-          INSERT INTO customer_enrollment
-            (email, cohort, is_active, free_year_expire_utc, notes, created_by, updated_utc,
-             cohort_source, keap_contact_id, keap_cohort_field_id, keap_cohort_field_label,
-             keap_cohort_field_raw, keap_synced_utc)
-          VALUES
-            ($1, 'NEW', $2, $3::timestamptz, $4, $5, NOW(),
-             'keap', $6, $7, $8, $9, NOW())
-          ON CONFLICT (email)
-          DO UPDATE SET
-            cohort = 'NEW',
-            is_active = EXCLUDED.is_active,
-            free_year_expire_utc = EXCLUDED.free_year_expire_utc,
-            notes = EXCLUDED.notes,
-            created_by = CASE
-                           WHEN COALESCE(customer_enrollment.created_by, '') = ''
-                           THEN EXCLUDED.created_by
-                           ELSE customer_enrollment.created_by
-                         END,
-            updated_utc = NOW(),
-            cohort_source = 'keap',
-            keap_contact_id = EXCLUDED.keap_contact_id,
-            keap_cohort_field_id = EXCLUDED.keap_cohort_field_id,
-            keap_cohort_field_label = EXCLUDED.keap_cohort_field_label,
-            keap_cohort_field_raw = EXCLUDED.keap_cohort_field_raw,
-            keap_synced_utc = NOW()
-          RETURNING email, cohort, is_active, enrolled_utc, free_year_start_utc, free_year_expire_utc,
-                    first_machine_guid, last_machine_guid, notes, created_by, updated_utc,
-                    cohort_source, keap_contact_id, keap_cohort_field_id,
-                    keap_cohort_field_label, keap_cohort_field_raw, keap_synced_utc
-          `,
-          [
-            email,
-            isActive,
-            keapResult.expire_utc,
-            isActive
-              ? 'Keap cohort sync: active free-year date'
-              : 'Keap cohort sync: expired free-year date',
-            createdBy,
-            String(keapResult.contact_id || ''),
-            extractKeapFieldId(keapResult.field),
-            extractKeapFieldLabel(keapResult.field),
-            String(keapResult.raw_value || ''),
-          ],
-        );
-
-        logger.log(
-          '[ADMIN-KEAP-SYNC] email=%s contactId=%s expire=%s active=%s raw=%s',
-          email,
-          String(keapResult.contact_id || ''),
-          keapResult.expire_utc,
-          isActive ? '1' : '0',
-          String(keapResult.raw_value || ''),
-        );
-
-        return res.status(200).json({
-          status: 'ok',
-          synced: true,
-          email: email,
-          is_cohort: true,
-          is_active: isActive,
-          keap_contact_id: String(keapResult.contact_id || ''),
-          keap_raw_value: String(keapResult.raw_value || ''),
-          free_year_expire_utc: keapResult.expire_utc,
-          customer: result.rows[0],
+        const result = await deps.keapCohortSync.syncCohortContact({
+          email: requestedEmail,
+          deactivate_if_blank: deactivateIfBlank,
+          created_by: createdBy,
         });
+        const httpStatus = result.http_status || 200;
+        const body = Object.assign({}, result);
+
+        delete body.http_status;
+
+        return res.status(httpStatus).json(body);
       } catch (err) {
         logger.logError('[ADMIN-KEAP-SYNC-ERR]', err);
         return res.status(500).json({

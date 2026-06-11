@@ -321,9 +321,7 @@ function createKeapClient(options) {
     return null;
   }
 
-  async function getCohortContactByEmail(email) {
-    const found = await findContactByEmail(email);
-    const contactId = extractContactId(found);
+  async function buildCohortContactResult(contactId, fallbackEmail) {
     const fieldInfo = await getCohortFieldDefinition();
     let fullContact = null;
     let rawValue = '';
@@ -347,12 +345,35 @@ function createKeapClient(options) {
       found: true,
       contact: fullContact,
       contact_id: contactId,
-      email: extractEmail(fullContact) || String(email || '').trim().toLowerCase(),
+      email: extractEmail(fullContact) || String(fallbackEmail || '').trim().toLowerCase(),
       name: extractName(fullContact),
       field: fieldInfo.field,
       raw_value: rawValue,
       expire_utc: expireUtc,
     };
+  }
+
+  async function getCohortContactByEmail(email) {
+    const found = await findContactByEmail(email);
+    const contactId = extractContactId(found);
+
+    return buildCohortContactResult(contactId, email);
+  }
+
+  async function getCohortContactById(contactId) {
+    const cleanContactId = String(contactId || '').trim();
+
+    if (!cleanContactId) {
+      return {
+        found: false,
+        contact: null,
+        field: null,
+        raw_value: '',
+        expire_utc: null,
+      };
+    }
+
+    return buildCohortContactResult(cleanContactId, '');
   }
 
 
@@ -415,6 +436,7 @@ function createKeapClient(options) {
     findContactByEmail: findContactByEmail,
     retrieveContact: retrieveContact,
     getCohortContactByEmail: getCohortContactByEmail,
+    getCohortContactById: getCohortContactById,
     writeRegistrationEmailByEmail: writeRegistrationEmailByEmail,
   };
 }

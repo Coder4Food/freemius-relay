@@ -23,6 +23,10 @@ module.exports = {
   ).trim(),
   keapCohortFieldId: String(process.env.KEAP_COHORT_FIELD_ID || '').trim(),
 
+  // Shared secret required by POST /api/webhooks/keap/contact-updated.
+  // Do not reuse the admin password/token or any Keap/Freemius/API credential.
+  keapWebhookSecret: String(process.env.KEAP_WEBHOOK_SECRET || '').trim(),
+
   // Optional Keap write-back target used when MVSW starts/uses a cohort free-year.
   keapRegEmailFieldLabel: String(
     process.env.KEAP_REG_EMAIL_FIELD_LABEL || 'SW Reg Key Email:',
