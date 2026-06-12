@@ -14,6 +14,28 @@ module.exports = function createWebhooksRouter(deps) {
     ).trim();
   }
 
+  function readHookSecret(req) {
+    return String((req.get && req.get('X-Hook-Secret')) || '').trim();
+  }
+
+  function isKeapHookVerification(req) {
+    return readHookSecret(req) !== '';
+  }
+
+  function sendKeapHookVerificationResponse(req, res) {
+    const hookSecret = readHookSecret(req);
+
+    logger.log('[KEAP-WEBHOOK-VERIFY] X-Hook-Secret received. Echoing verification header.');
+
+    return res
+      .status(200)
+      .set('X-Hook-Secret', hookSecret)
+      .json({
+        status: 'ok',
+        verified: true,
+      });
+  }
+
   function isAuthorized(req) {
     const expected = String((env && env.keapWebhookSecret) || '').trim();
     const received = readWebhookSecret(req);
@@ -27,6 +49,22 @@ module.exports = function createWebhooksRouter(deps) {
     for (i = 0; i < arguments.length; i += 1) {
       if (arguments[i] !== undefined && arguments[i] !== null && String(arguments[i]).trim() !== '') {
         return arguments[i];
+      }
+    }
+
+    return '';
+  }
+
+  function firstObjectKeyId(value) {
+    let i = 0;
+
+    if (!Array.isArray(value)) {
+      return '';
+    }
+
+    for (i = 0; i < value.length; i += 1) {
+      if (value[i] && value[i].id !== undefined && value[i].id !== null && String(value[i].id).trim() !== '') {
+        return value[i].id;
       }
     }
 
@@ -51,6 +89,10 @@ module.exports = function createWebhooksRouter(deps) {
 
   function extractContactIdFromPayload(body) {
     return firstValue(
+      body && firstObjectKeyId(body.object_keys),
+      body && firstObjectKeyId(body.objectKeys),
+      body && body.data && firstObjectKeyId(body.data.object_keys),
+      body && body.data && firstObjectKeyId(body.data.objectKeys),
       body && body.contact_id,
       body && body.contactId,
       body && body.id,
@@ -72,6 +114,10 @@ module.exports = function createWebhooksRouter(deps) {
       let result = null;
       let response = null;
 
+      if (isKeapHookVerification(req)) {
+        return sendKeapHookVerificationResponse(req, res);
+      }
+
       if (!isAuthorized(req)) {
         return res.status(401).json({
           status: 'unauthorized',
@@ -87,12 +133,14 @@ module.exports = function createWebhooksRouter(deps) {
       });
 
       logger.log(
-        '[KEAP-WEBHOOK] status=%s synced=%s email=%s contactId=%s active=%s',
+        '[KEAP-WEBHOOK] status=%s synced=%s email=%s contactId=%s active=%s event=%s objectType=%s',
         String(result.status || ''),
         result.synced ? '1' : '0',
         String(result.email || email || ''),
         String(result.keap_contact_id || contactId || ''),
         result.is_active ? '1' : '0',
+        String((req.body && req.body.event_key) || ''),
+        String((req.body && req.body.object_type) || ''),
       );
 
       // Return 200 for well-authenticated webhook deliveries so Keap does not keep retrying
